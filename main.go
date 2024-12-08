@@ -2,33 +2,156 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
 	"net/http"
+	"time"
 
 	_ "github.com/lib/pq"
 )
 
-type Users struct {
-	user_id            int
-	user_name          string
-	user_surname       string
-	user_email         string
-	user_password_hash string
+type APIResponse struct {
+	Success bool        `json:"success"`
+	Message string      `json:"message,omitempty"`
+	Data    interface{} `json:"data,omitempty"`
 }
 
-func login_page(w http.ResponseWriter, r *http.Request) {
-	tmpl, err := template.ParseFiles("templates/login.html")
-	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		log.Printf("Template parsing error: %v", err)
+type User struct {
+	UserID           int       `json:"user_id"`
+	UserName         string    `json:"user_name"`
+	UserSurname      string    `json:"user_surname"`
+	UserEmail        string    `json:"email"`
+	UserPasswordHash string    `json:"-"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
+type LoginRequest struct {
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required"`
+}
+
+type LoginResponse struct {
+	Token string `json:"token"`
+	User  User   `json:"user"`
+}
+
+func loginHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Content-Type") == "application/json" {
+		handleAPILogin(w, r)
 		return
 	}
-	if err := tmpl.Execute(w, nil); err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		log.Printf("Template execution error: %v", err)
+	handleFormLogin(w, r)
+}
+
+func handleAPILogin(w http.ResponseWriter, r *http.Request) {
+	var loginReq LoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&loginReq); err != nil {
+		sendJSONResponse(w, http.StatusBadRequest, APIResponse{
+			Success: false,
+			Message: "Invalid request body",
+		})
+		return
 	}
+
+	db, err := sql.Open("postgres", "user=postgres password=123 dbname=scientify sslmode=disable")
+	if err != nil {
+		sendJSONResponse(w, http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Message: "Database connection error",
+		})
+		return
+	}
+	defer db.Close()
+
+	var user User
+	err = db.QueryRow("SELECT user_id, user_name, user_surname, user_email, user_password_hash FROM users WHERE user_email = $1",
+		loginReq.Email).Scan(&user.UserID, &user.UserName, &user.UserSurname, &user.UserEmail, &user.UserPasswordHash)
+
+	if err == sql.ErrNoRows {
+		sendJSONResponse(w, http.StatusUnauthorized, APIResponse{
+			Success: false,
+			Message: "Invalid email or password",
+		})
+		return
+	}
+
+	// Set session cookie
+	expiration := time.Now().Add(24 * time.Hour)
+	cookie := http.Cookie{
+		Name:     "session_token",
+		Value:    fmt.Sprintf("%d", user.UserID), // In production, use proper session tokens
+		Expires:  expiration,
+		Path:     "/",
+		HttpOnly: true,
+	}
+	http.SetCookie(w, &cookie)
+
+	// Don't send password hash in response
+	user.UserPasswordHash = ""
+
+	sendJSONResponse(w, http.StatusOK, APIResponse{
+		Success: true,
+		Data:    user,
+	})
+}
+
+func handleFormLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		tmpl, err := template.ParseFiles("templates/login.html")
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			log.Printf("Template parsing error: %v", err)
+			return
+		}
+		if err := tmpl.Execute(w, nil); err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			log.Printf("Template execution error: %v", err)
+		}
+		return
+	}
+
+	// Handle POST request
+	email := r.FormValue("email")
+	password := r.FormValue("password")
+
+	// TODO: Add form validation here
+
+	db, err := sql.Open("postgres", "user=postgres password=123 dbname=scientify sslmode=disable")
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	defer db.Close()
+
+	var user User
+	err = db.QueryRow("SELECT user_id, user_name, user_surname FROM users WHERE user_email = $1 AND user_password_hash = $2",
+		email, password).Scan(&user.UserID, &user.UserName, &user.UserSurname)
+
+	if err != nil {
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		return
+	}
+
+	// Set session cookie
+	expiration := time.Now().Add(24 * time.Hour)
+	cookie := http.Cookie{
+		Name:     "session_token",
+		Value:    fmt.Sprintf("%d", user.UserID),
+		Expires:  expiration,
+		Path:     "/",
+		HttpOnly: true,
+	}
+	http.SetCookie(w, &cookie)
+
+	http.Redirect(w, r, "/mainpage", http.StatusSeeOther)
+}
+
+func sendJSONResponse(w http.ResponseWriter, status int, response APIResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(response)
 }
 
 func register_page(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +231,7 @@ func handleRequest() {
 	fs := http.FileServer(http.Dir("./static"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 	http.HandleFunc("/", index_page)
-	http.HandleFunc("/login", login_page)
+	http.HandleFunc("/login", loginHandler)
 	http.HandleFunc("/register", register_page)
 	http.HandleFunc("/index", index_page)
 	http.HandleFunc("/mainpage", main_page)
