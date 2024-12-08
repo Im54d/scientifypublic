@@ -1,1 +1,1 @@
-web: bin/scientify 
+web: scientify 

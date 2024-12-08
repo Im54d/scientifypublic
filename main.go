@@ -228,35 +228,31 @@ func user_reg(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-func handleRequest() {
+func main() {
+	// Get port from environment variable
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	// Database connection
+	db, err := sql.Open("postgres", getDatabaseURL())
+	if err != nil {
+		log.Fatalf("Error connecting to database: %v", err)
+	}
+	defer db.Close()
+	log.Println("Database connected")
+
+	// Set up routes
 	fs := http.FileServer(http.Dir("./static"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 	http.HandleFunc("/", index_page)
 	http.HandleFunc("/login", loginHandler)
 	http.HandleFunc("/register", register_page)
-	http.HandleFunc("/index", index_page)
 	http.HandleFunc("/mainpage", main_page)
 	http.HandleFunc("/user_reg", user_reg)
 
-	log.Printf("Starting server on :2222")
-	if err := http.ListenAndServe(":2222", nil); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080" // Default port
-	}
-
-	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
-	if err != nil {
-		panic(err)
-	}
-	defer db.Close()
-	fmt.Println("Database connected")
-	
+	// Start server with the correct port
 	log.Printf("Starting server on port %s", port)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatal(err)
