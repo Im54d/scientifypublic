@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -244,11 +245,28 @@ func handleRequest() {
 }
 
 func main() {
-	db, err := sql.Open("postgres", "user=postgres password=123 dbname=scientify sslmode=disable")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080" // Default port
+	}
+
+	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
 	if err != nil {
 		panic(err)
 	}
 	defer db.Close()
 	fmt.Println("Database connected")
-	handleRequest()
+	
+	log.Printf("Starting server on port %s", port)
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func getDatabaseURL() string {
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		return "postgres://postgres:123@localhost:5432/scientify?sslmode=disable"
+	}
+	return dbURL
 }

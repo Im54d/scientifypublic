@@ -1,0 +1,26 @@
+{
+  "name": "Scientify",
+  "description": "Scientify web application",
+  "keywords": [
+    "go",
+    "scientify"
+  ],
+  "website": "",
+  "repository": "https://github.com/im54d/scientify",
+  "addons": [
+    {
+      "plan": "heroku-postgresql:hobby-dev"
+    }
+  ],
+  "buildpacks": [
+    {
+      "url": "heroku/go"
+    }
+  ],
+  "env": {
+    "GO_ENV": {
+      "description": "Application environment",
+      "value": "production"
+    }
+  }
+} 
