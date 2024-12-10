@@ -306,6 +306,18 @@ func main_page(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func profile_page(w http.ResponseWriter, r *http.Request){
+	tmpl, err := template.ParseFiles("templates/profile.html")
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		log.Printf("Template parsing error: %v", err)
+	}
+	if err := tmpl.Execute(w, nil); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		log.Printf("Template execution error: %v", err)
+	}
+	
+}
 func user_reg(w http.ResponseWriter, r *http.Request) {
 	user_name := r.FormValue("name")
 	user_surname := r.FormValue("surname")
@@ -395,6 +407,7 @@ func main() {
 	http.HandleFunc("/api/userinfo", validateToken(userInfoHandler))
 	http.HandleFunc("/api/login", loginHandler)
 	http.HandleFunc("/api/apilogin", handleAPILogin)
+	http.HandleFunc("/profile", profile_page)
 
 	// Запуск сервера
 	log.Printf("Starting server on port %s", port)
