@@ -345,7 +345,7 @@ func user_reg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/mainpage", http.StatusSeeOther)
 }
 
 func userInfoHandler(w http.ResponseWriter, r *http.Request) {
