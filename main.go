@@ -232,7 +232,7 @@ func handleFormLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ПОСТ 
+	// ПОСТ
 	email := r.FormValue("email")
 	password := r.FormValue("password")
 
@@ -312,7 +312,7 @@ func user_reg(w http.ResponseWriter, r *http.Request) {
 	user_email := r.FormValue("email")
 	user_password_hash := r.FormValue("password")
 
-	db, err := sql.Open("postgres", "user=postgres password=123 dbname=scientify sslmode=disable")
+	db, err := sql.Open("postgres", "user=scientify_owner dbname=scientify password=PgtTJOfZ0Qr7 host=ep-polished-block-a9ifzvk9.gwc.azure.neon.tech sslmode=require")
 	if err != nil {
 		log.Printf("Database connection error: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -406,7 +406,7 @@ func main() {
 func getDatabaseURL() string {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		return "postgres://postgres:123@localhost:5432/scientify?sslmode=disable"
+		dbURL = "postgres://scientify_owner:PgtTJOfZ0Qr7@ep-polished-block-a9ifzvk9.gwc.azure.neon.tech/scientify?sslmode=require"
 	}
 	return dbURL
 }
