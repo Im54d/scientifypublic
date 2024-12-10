@@ -1,7 +1,7 @@
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    // Reset error messages
+    // сообщение ошибки
     document.querySelectorAll('.error-message').forEach(elem => elem.textContent = '');
 
     const email = document.getElementById('email').value;
@@ -23,11 +23,11 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
         }
 
         if (data.success) {
-            // Store token and user data
+            // Хранение токена и данных юзера
             localStorage.setItem('token', data.data.token);
             localStorage.setItem('user', JSON.stringify(data.data.user));
 
-            // Show success message
+            // подтверждение входа
             Toastify({
                 text: "Login successful!",
                 duration: 3000,
@@ -36,13 +36,13 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
                 backgroundColor: "#4CAF50",
             }).showToast();
 
-            // Redirect to main page after short delay
+            // на мэйнпэйдж после задержки 
             setTimeout(() => {
                 window.location.href = '/mainpage';
             }, 1000);
         }
     } catch (error) {
-        // Show error message
+        // еррор
         Toastify({
             text: error.message || "An error occurred during login",
             duration: 3000,
@@ -53,7 +53,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     }
 });
 
-// Add input validation
+// 
 document.getElementById('email').addEventListener('input', (e) => {
     const email = e.target.value;
     const emailError = document.getElementById('emailError');
