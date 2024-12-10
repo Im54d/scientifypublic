@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create an Event</title>
+    <link rel="stylesheet" href="/static/events.css">
+</head>
+<body>
+<header>
+    <div class="logo">Scientify</div>
+    <nav class="navbar">
+        <a href="/mainpage" class="nav-link">Home</a>
+        <a href="/profile" class="nav-link">Profile</a>
+        <a href="/events" class="nav-link">Events</a>
+        <a href="#" class="nav-link">Log Out</a>
+    </nav>
+</header>
+
+<main>
+    <section class="create-event">
+        <form action="/create_event" method="post" class="event-form">
+            <label for="event-title">Event Title</label>
+            <input type="text" id="event_title" name="event_title" placeholder="Enter event title" required>
+
+            <label for="event-date">Date</label>
+            <input type="date" id="Date" name="Date" required>
+
+            <label for="event-time">Time</label>
+            <input type="time" id="Time" name="Time" required>
+
+            <label for="event-location">Location</label>
+            <input type="text" id="location" name="location" placeholder="Enter location" required>
+
+            <label for="event-description">Description</label>
+            <textarea id="description" name="description" rows="5" placeholder="Enter a brief description of the event" required></textarea>
+
+            <label for="event-tags">Tags (e.g., AI, Robotics, etc.)</label>
+            <input type="text" id="Tags" name="Tags" placeholder="Enter tags separated by commas">
+
+            <button type="submit">Create Event</button>
+        </form>
+    </section>
+</main>
+
+<footer>
+</footer>
+</body>
+</html>

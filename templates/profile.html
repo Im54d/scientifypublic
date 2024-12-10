@@ -4,15 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>My Profile</title>
-  <link rel="stylesheet" href="profile.css">
+  <link rel="stylesheet" href="/static/profile.css">
+  <script src="/static/js/profile.js" defer></script>
 </head>
 <body>
 <header>
   <div class="logo">Scientify</div>
   <nav class="navbar">
-    <a href="mainpage.html" class="nav-link">Home</a>
-    <a href="#" class="nav-link">Events</a>
-    <a href="#" class="nav-link">Create Event</a>
+    <a href="/mainpage" class="nav-link">Home</a>
+    <a href="/events" class="nav-link">Events</a>
+    <a href="/create_event" class="nav-link">Create Event</a>
     <a href="#" class="nav-link">Log Out</a>
   </nav>
 </header>
@@ -20,16 +21,15 @@
 <main>
   <section class="profile-card">
     <div class="profile-header">
-      <img src="miko.jpg" alt="User Picture" class="profile-pic">
-      <h1 class="user-name">Miko Tleusserik</h1>
-      <p class="user-role">Admin</p>
+      <img src="/static/profile icon.svg" alt="User Picture" class="profile-pic">
+      <h1 class="user-name">{{.UserName}}</h1>
+      <p class="user-role">Regular</p>
     </div>
     <div class="profile-details">
       <h2>Information</h2>
-      <p><strong>Email:</strong> m.tleusserik@aues.kz</p>
-      <p><strong>Phone:</strong> +7 700 000 0001</p>
-      <p><strong>Date of Birth:</strong> October 29, 2004</p>
-      <p><strong>Interests:</strong> AI, Robotics, Music</p>
+      <p><strong>Name:</strong> {{.UserName}}</p>
+      <p><strong>Surname:</strong> {{.UserSurname}}</p>
+      <p><strong>Email:</strong> {{.UserEmail}}</p>
     </div>
     <div class="profile-actions">
       <button class="edit-profile">Profile Settings</button>

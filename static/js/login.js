@@ -75,4 +75,38 @@ document.getElementById('password').addEventListener('input', (e) => {
     } else {
         passwordError.textContent = '';
     }
+});
+
+document.addEventListener('DOMContentLoaded', async () => {
+    const token = localStorage.getItem('token');
+
+    if (!token) {
+        // Если токен отсутствует, перенаправьте на страницу входа
+        window.location.href = '/login';
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/profile', {
+            method: 'GET',
+            headers: {
+                'Authorization': 'Bearer ' + token
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to fetch profile data');
+        }
+
+        const data = await response.json();
+        // Обновите страницу профиля с полученными данными
+        document.getElementById('userID').textContent = data.userID;
+        document.getElementById('userName').textContent = data.userName;
+        document.getElementById('userSurname').textContent = data.userSurname;
+        document.getElementById('userEmail').textContent = data.userEmail;
+    } catch (error) {
+        console.error('Error fetching profile:', error);
+        // Обработка ошибок, например, перенаправление на страницу входа
+        window.location.href = '/login';
+    }
 }); 

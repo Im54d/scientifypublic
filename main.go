@@ -28,7 +28,7 @@ type User struct {
 	UserID           int       `json:"user_id"`
 	UserName         string    `json:"user_name"`
 	UserSurname      string    `json:"user_surname"`
-	UserEmail        string    `json:"email"`
+	UserEmail        string    `json:"user_email"`
 	UserPasswordHash string    `json:"-"`
 	CreatedAt        time.Time `json:"created_at"`
 }
@@ -51,21 +51,21 @@ type Claims struct {
 
 type contextKey string
 
-const userIDKey = contextKey("userID")
+const userIDKey contextKey = "userID"
 
+// Проверка токена
 func validateToken(next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		tokenString := r.Header.Get("Authorization")
-		if tokenString == "" {
+		cookie, err := r.Cookie("session_token")
+		if err != nil {
 			sendJSONResponse(w, http.StatusUnauthorized, APIResponse{
 				Success: false,
-				Message: "Missing authorization token",
+				Message: "Missing or invalid session token",
 			})
 			return
 		}
 
-		// Удаляем "Bearer " из токена
-		tokenString = tokenString[len("Bearer "):]
+		tokenString := cookie.Value
 
 		claims := &Claims{}
 		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
@@ -87,11 +87,21 @@ func validateToken(next http.HandlerFunc) http.HandlerFunc {
 			})
 			return
 		}
+
+		// Сохраняем UserID в контексте запроса
 		ctx := context.WithValue(r.Context(), userIDKey, claims.UserID)
 		r = r.WithContext(ctx)
 
+		// некст роутер аксесс роутеру
 		next.ServeHTTP(w, r)
 	})
+}
+
+func getUserIDFromContext(r *http.Request) int {
+	if userID, ok := r.Context().Value(userIDKey).(int); ok {
+		return userID
+	}
+	return 0
 }
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
@@ -142,6 +152,15 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	expiration := time.Now().Add(24 * time.Hour) // 24 часика доступны куки
+	cookie := http.Cookie{
+		Name:     "session_token",
+		Value:    token,
+		Expires:  expiration,
+		Path:     "/",
+		HttpOnly: true,
+	}
+	http.SetCookie(w, &cookie)
 
 	sendJSONResponse(w, http.StatusOK, APIResponse{
 		Success: true,
@@ -277,6 +296,62 @@ func register_page(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Template execution error: %v", err)
 	}
 }
+func events(w http.ResponseWriter, r *http.Request) {
+	tmpl, err := template.ParseFiles("templates/events.html")
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		log.Printf("Template parsing error: %v", err)
+		return
+	}
+	if err := tmpl.Execute(w, nil); err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		log.Printf("template execution error:%v", err)
+	}
+}
+func create_event(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		event_title := r.FormValue("event_title")
+		Date := r.FormValue("Date")
+		Time := r.FormValue("Time")
+		location := r.FormValue("location")
+		description := r.FormValue("description")
+		Tags := r.FormValue("Tags")
+		db, err := sql.Open("postgres", "user=scientify_owner dbname=scientify sslmode=require password=PgtTJOfZ0Qr7 host=ep-polished-block-a9ifzvk9.gwc.azure.neon.tech")
+		if err != nil {
+			log.Printf("Database connection error: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		defer db.Close()
+
+		stmt, err := db.Prepare("INSERT INTO events (event_title, event_date, event_time, event_location, event_description, event_tags) VALUES ($1, $2, $3, $4, $5, $6)")
+		if err != nil {
+			log.Printf("Query preparation error: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		defer stmt.Close()
+
+		_, err = stmt.Exec(event_title, Date, Time, location, description, Tags)
+		if err != nil {
+			log.Printf("Query execution error: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		http.Redirect(w, r, "/mainpage", http.StatusSeeOther)
+		return
+	} else {
+		tmpl, err := template.ParseFiles("templates/create_events.html")
+		if err != nil {
+			http.Error(w, "Couldn't parse file", http.StatusInternalServerError)
+			return
+		}
+		err = tmpl.Execute(w, nil)
+		if err != nil {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+	}
+}
 
 func index_page(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Handling request for /index")
@@ -306,18 +381,40 @@ func main_page(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func profile_page(w http.ResponseWriter, r *http.Request){
+func profile_page(w http.ResponseWriter, r *http.Request) {
+	userIDValue := r.Context().Value(userIDKey)
+	if userIDValue == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, ok := userIDValue.(int)
+	if !ok {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	var user User
+	err := db.QueryRow("SELECT user_id, user_name, user_surname, user_email FROM users WHERE user_id = $1", userID).Scan(&user.UserID, &user.UserName, &user.UserSurname, &user.UserEmail)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		log.Printf("Database query error: %v", err)
+		return
+	}
+
 	tmpl, err := template.ParseFiles("templates/profile.html")
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		log.Printf("Template parsing error: %v", err)
+		return
 	}
-	if err := tmpl.Execute(w, nil); err != nil {
+
+	if err := tmpl.Execute(w, user); err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		log.Printf("Template execution error: %v", err)
 	}
-	
 }
+
 func user_reg(w http.ResponseWriter, r *http.Request) {
 	user_name := r.FormValue("name")
 	user_surname := r.FormValue("surname")
@@ -356,20 +453,55 @@ func user_reg(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
+	var existingEmail string
+	err = db.QueryRow("SELECT user_email FROM users WHERE user_email = $1", user_email).Scan(&existingEmail)
+	if err != nil && err != sql.ErrNoRows {
+		log.Printf("Error checking email: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	if existingEmail != "" {
+		http.Error(w, "Email already in use", http.StatusConflict)
+		return
+	}
 
 	http.Redirect(w, r, "/mainpage", http.StatusSeeOther)
 }
 
 func userInfoHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(userIDKey).(int)
-
-	// Здесь вы можете получить информацию о пользователе из базы данных по userID
 	var user User
 	err := db.QueryRow("SELECT user_id, user_name, user_surname, user_email FROM users WHERE user_id = $1", userID).Scan(&user.UserID, &user.UserName, &user.UserSurname, &user.UserEmail)
 	if err != nil {
 		sendJSONResponse(w, http.StatusInternalServerError, APIResponse{
 			Success: false,
 			Message: "Database query error",
+		})
+		return
+	}
+
+	sendJSONResponse(w, http.StatusOK, APIResponse{
+		Success: true,
+		Data:    user,
+	})
+}
+func getUserByID(userID int) (User, error) {
+	var user User
+	err := db.QueryRow("SELECT user_id, user_name, user_surname, user_email FROM users WHERE user_id = $1", userID).Scan(&user.UserID, &user.UserName, &user.UserSurname, &user.UserEmail)
+	if err != nil {
+		return User{}, err
+	}
+	return user, nil
+}
+
+func getProfile(w http.ResponseWriter, r *http.Request) {
+	userID := getUserIDFromContext(r)
+
+	user, err := getUserByID(userID)
+	if err != nil {
+		sendJSONResponse(w, http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Message: "Error fetching user data",
 		})
 		return
 	}
@@ -407,7 +539,10 @@ func main() {
 	http.HandleFunc("/api/userinfo", validateToken(userInfoHandler))
 	http.HandleFunc("/api/login", loginHandler)
 	http.HandleFunc("/api/apilogin", handleAPILogin)
-	http.HandleFunc("/profile", profile_page)
+	http.HandleFunc("/profile", validateToken(profile_page))
+	http.HandleFunc("/api/profile", validateToken(getProfile))
+	http.HandleFunc("/events", events)
+	http.HandleFunc("/create_event", create_event)
 
 	// Запуск сервера
 	log.Printf("Starting server on port %s", port)
