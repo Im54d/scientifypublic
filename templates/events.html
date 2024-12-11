@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create an Event</title>
+    <title>Events</title>
     <link rel="stylesheet" href="/static/events.css">
 </head>
 <body>
@@ -21,23 +21,16 @@
      <section class="event-list">
         <h1>Upcoming Events</h1>
         <div class="events-container">
+            {{ range . }}
             <div class="event-item">
-                <h2>AI in Healthcare</h2>
-                <p><strong>Date:</strong> 2024-12-10</p>
-                <p><strong>Time:</strong> 10:00 AM</p>
-                <p><strong>Location:</strong> Almaty Conference Hall</p>
-                <p><strong>Description:</strong> A discussion on the latest AI advancements in the healthcare industry.</p>
-                <p><strong>Tags:</strong> AI, Healthcare</p>
+                <h2>{{ .EventTitle }}</h2>
+                <p><strong>Date:</strong> {{ .EventDate.Format "2006-01-02" }}</p>
+                <p><strong>Time:</strong> {{ .EventTime }}</p>
+                <p><strong>Location:</strong> {{ .EventLocation }}</p>
+                <p><strong>Description:</strong> {{ .EventDescription }}</p>
+                <p><strong>Tags:</strong> {{ .EventTags }}</p>
             </div>
-
-            <div class="event-item">
-                <h2>Quantum Computing Workshop</h2>
-                <p><strong>Date:</strong> 2024-12-15</p>
-                <p><strong>Time:</strong> 2:00 PM</p>
-                <p><strong>Location:</strong> Astana Tech Center</p>
-                <p><strong>Description:</strong> Hands-on workshop exploring quantum computing applications.</p>
-                <p><strong>Tags:</strong> Quantum, Workshop</p>
-            </div>
+            {{ end }}
         </div>
     </section>
 </main>

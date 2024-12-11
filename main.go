@@ -32,8 +32,15 @@ type User struct {
 	UserPasswordHash string    `json:"-"`
 	CreatedAt        time.Time `json:"created_at"`
 }
-type Event struct{
-	
+
+type Event struct {
+	EventID          int       `json:"event_id"`
+	EventTitle       string    `json:"event_title"`
+	EventDate        time.Time `json:"event_date"`
+	EventTime        string    `json:"event_time"`
+	EventLocation    string    `json:"event_location"`
+	EventDescription string    `json:"event_description"`
+	EventTags        string    `json:"event_tags"`
 }
 
 type LoginRequest struct {
@@ -299,18 +306,48 @@ func register_page(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Template execution error: %v", err)
 	}
 }
+
+// Функция для получения всех событий из базы данных
+func getAllEvents() ([]Event, error) {
+	rows, err := db.Query("SELECT event_id, event_title, event_date, event_time, event_location, event_description, event_tags FROM events")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []Event
+	for rows.Next() {
+		var event Event
+		if err := rows.Scan(&event.EventID, &event.EventTitle, &event.EventDate, &event.EventTime, &event.EventLocation, &event.EventDescription, &event.EventTags); err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+	return events, nil
+}
+
+// Обработчик для отображения событий
 func events(w http.ResponseWriter, r *http.Request) {
+	events, err := getAllEvents()
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		log.Printf("Error fetching events: %v", err)
+		return
+	}
+
 	tmpl, err := template.ParseFiles("templates/events.html")
 	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		log.Printf("Template parsing error: %v", err)
 		return
 	}
-	if err := tmpl.Execute(w, nil); err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		log.Printf("template execution error:%v", err)
+
+	if err := tmpl.Execute(w, events); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		log.Printf("Template execution error: %v", err)
 	}
 }
+
 func create_event(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		event_title := r.FormValue("event_title")
@@ -488,6 +525,7 @@ func userInfoHandler(w http.ResponseWriter, r *http.Request) {
 		Data:    user,
 	})
 }
+
 func getUserByID(userID int) (User, error) {
 	var user User
 	err := db.QueryRow("SELECT user_id, user_name, user_surname, user_email FROM users WHERE user_id = $1", userID).Scan(&user.UserID, &user.UserName, &user.UserSurname, &user.UserEmail)
