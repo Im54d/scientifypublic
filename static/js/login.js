@@ -19,15 +19,12 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
             headers: {
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ email, password }),
         });
 
 
         if (!response.ok) {
             throw new Error(data.message || 'Login failed');
         }
-
-            // подтверждение входа
             Toastify({
                 text: "Login successful!",
                 duration: 3000,
@@ -87,7 +84,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const token = getCookie('session_token');
     
 
-    if (!token=='') {
+    if (!token) {
         // Если токен отсутствует, перенаправьте на страницу входа
         //если нет токена на логин пейдж
         window.location.href = '/login';
