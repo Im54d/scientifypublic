@@ -1,24 +1,24 @@
+const getCookie = (name) => {
+    let value = `; ${document.cookie}`;
+    let parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+};
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
 
     // сообщение ошибки
     document.querySelectorAll('.error-message').forEach(elem => elem.textContent = '');
-
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-    const getCookie = (name) => {
-        let value = `; ${document.cookie}`;
-        let parts = value.split(`; ${name}=`);
-        if (parts.length === 2) return parts.pop().split(';').shift();
-    };
-
+    const email = document.getElementByID('email').value;
+    const password = document.getElementByID('password').value;
     const token = getCookie('session_token');
     try {
         const response = await fetch('/api/login', {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${token}`
+               'Content-Type': 'application/json
             },
+            credentials: 'inculde',
+            body: JSON.stringify({email, password}),
         });
 
 
@@ -75,18 +75,9 @@ document.getElementById('password').addEventListener('input', (e) => {
 });
 
 document.addEventListener('DOMContentLoaded', async () => {
-    const getCookie = (name) => {
-        let value = `; ${document.cookie}`;
-        let parts = value.split(`; ${name}=`);
-        if (parts.length === 2) return parts.pop().split(';').shift();
-    };
-
     const token = getCookie('session_token');
-    
-
     if (!token) {
-        // Если токен отсутствует, перенаправьте на страницу входа
-        //если нет токена на логин пейдж
+        console.log('no token found');
         window.location.href = '/login';
         return;
     }
@@ -94,8 +85,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const response = await fetch('/api/profile', {
             method: 'GET',
             headers: {
-                'Authorization': 'Bearer ' + token
-            }
+                'Authorization': 'Bearer ${token}'
+            },
+            credentials: 'include',
         });
 
         if (!response.ok) {
