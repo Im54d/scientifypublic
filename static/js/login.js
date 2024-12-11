@@ -27,11 +27,6 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
             throw new Error(data.message || 'Login failed');
         }
 
-        if (data.success) {
-            // Хранение токена и данных юзера
-            localStorage.setItem('token', data.data.token);
-            localStorage.setItem('user', JSON.stringify(data.data.user));
-
             // подтверждение входа
             Toastify({
                 text: "Login successful!",
@@ -83,9 +78,16 @@ document.getElementById('password').addEventListener('input', (e) => {
 });
 
 document.addEventListener('DOMContentLoaded', async () => {
-    const token = localStorage.getItem('token');
+    const getCookie = (name) => {
+        let value = `; ${document.cookie}`;
+        let parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+    };
 
-    if (!token) {
+    const token = getCookie('session_token');
+    
+
+    if (!token=='') {
         // Если токен отсутствует, перенаправьте на страницу входа
         //если нет токена на логин пейдж
         window.location.href = '/login';
