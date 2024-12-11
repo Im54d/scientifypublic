@@ -17,7 +17,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
         const response = await fetch('/api/login', {
             method: 'POST',
             headers: {
-                'Authorization: 
+                'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({ email, password }),
         });
