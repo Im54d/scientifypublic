@@ -500,7 +500,7 @@ func user_reg(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	if existingEmail != "" {
+	if existingEmail == "" {
 		http.Error(w, "Email already in use", http.StatusConflict)
 		return
 	}
