@@ -32,6 +32,9 @@ type User struct {
 	UserPasswordHash string    `json:"-"`
 	CreatedAt        time.Time `json:"created_at"`
 }
+type Event struct{
+	
+}
 
 type LoginRequest struct {
 	Email    string `json:"email"`
@@ -109,7 +112,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&loginReq); err != nil {
 		sendJSONResponse(w, http.StatusBadRequest, APIResponse{
 			Success: false,
-			Message: "Неверное тело запроса",
+			Message: "Неверный запрос",
 		})
 		return
 	}
