@@ -80,11 +80,6 @@ document.getElementById('password').addEventListener('input', (e) => {
 document.addEventListener('DOMContentLoaded', async () => {
     const token = localStorage.getItem('token');
 
-    if (!token) {
-        //если нет токена на логин пейдж
-        window.location.href = '/login';
-        return;
-    }
 
     try {
         const response = await fetch('/api/profile', {
