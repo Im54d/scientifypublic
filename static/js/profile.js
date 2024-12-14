@@ -8,6 +8,11 @@ document.addEventListener("DOMContentLoaded", function() {
 
     const token = getCookie('session_token');
 
+    if (!token) {
+        // Если токен отсутствует, перенаправляем на страницу входа
+        window.location.href = '/login';
+    }
+
     fetch('/api/profile', {
         method: 'GET',
         headers: {

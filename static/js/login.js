@@ -4,15 +4,13 @@
 document.getElementById('loginForm').addEventListener('submit', function(event) {
     event.preventDefault();
 
-    // Очистка сообщений об ошибках
     document.querySelectorAll('.error-message').forEach(elem => elem.textContent = '');
 
     const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
+    const password = document.getElementById('password').value.trim();
 
     console.log('Email:', email, 'Password:', password);
 
-    // Отправка данных на сервер для аутентификации
     fetch('/api/login', {
         method: 'POST',
         headers: {
@@ -22,21 +20,21 @@ document.getElementById('loginForm').addEventListener('submit', function(event) 
     })
     .then(response => {
         if (response.ok) {
-            // Если логин успешен, перенаправляем на главную страницу
-            window.location.href = '/mainpage';
+            return response.json();
         } else {
             return response.json().then(data => {
-                // Обработка ошибок, если логин не удался
                 throw new Error(data.message || 'Ошибка входа');
             });
         }
     })
     .then(data => {
         console.log('Login successful:', data);
+        document.cookie = `session_token=${data.token}; path=/; Secure; HttpOnly`;
+        window.location.href = '/mainpage';
     })
     .catch(error => {
         console.error('Ошибка:', error);
-        // Здесь можно отобразить сообщение об ошибке на странице
+        alert(error.message);
     });
 });
 
@@ -74,20 +72,17 @@ function getCookie(name) {
 
 // Проверка токена при загрузке страницы
 document.addEventListener('DOMContentLoaded', () => {
-    const token = getCookie('session_token'); // Убедитесь, что имя куки совпадает
-    console.log('Token from cookie:', token); // Логирование токена
+    const token = getCookie('session_token');
+    console.log('Token from cookie:', token);
 
     if (!token) {
-        // Если нет токена, остаемся на странице логина
         if (window.location.pathname !== '/login') {
             window.location.href = '/login';
         }
-        return;
     }
 
-    // Проверка текущего пути и вызов функции fetchProfileData
     if (window.location.pathname === '/mainpage') {
-        fetchProfileData(); // Получение профиля только на странице mainpage
+        fetchProfileData();
     }
 });
 
@@ -95,12 +90,17 @@ function fetchProfileData() {
     fetch('/api/profile', {
         method: 'GET',
         headers: {
-            'Authorization': 'Bearer ' + getCookie('token')
+            'Authorization': `Bearer ${getCookie('session_token')}`
         }
     })
-    .then(response => response.json())
+    .then(response => {
+        if (response.ok) {
+            return response.json();
+        } else {
+            throw new Error('Failed to fetch profile');
+        }
+    })
     .then(data => {
-        // Обновление элементов на странице mainpage
         document.getElementById('userID').textContent = data.userID;
         document.getElementById('userName').textContent = data.userName;
         document.getElementById('userSurname').textContent = data.userSurname;
@@ -108,7 +108,7 @@ function fetchProfileData() {
     })
     .catch(error => {
         console.error('Error fetching profile:', error);
-        window.location.href = '/login'; // Перенаправление на логин при ошибке
+        window.location.href = '/login';
     });
 }
 
@@ -118,3 +118,14 @@ function getCookie(name) {
     const parts = value.split(`; ${name}=`);
     if (parts.length === 2) return parts.pop().split(';').shift();
 }
+
+function handleLogin() {
+    // Удаление старого токена из локального хранилища
+    localStorage.removeItem('token');
+
+    // Получение нового токена из куки
+    const token = getCookie('session_token');
+    localStorage.setItem('token', token); // Сохранение нового токена
+}
+
+console.log('Using token:', token);

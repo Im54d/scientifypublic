@@ -8,7 +8,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"os"
+	"os"	
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -25,12 +25,12 @@ type APIResponse struct {
 }
 
 type User struct {
-	UserID           int       `json:"user_id"`
-	UserName         string    `json:"user_name"`
-	UserSurname      string    `json:"user_surname"`
-	UserEmail        string    `json:"user_email"`
-	UserPasswordHash string    `json:"-"`
-	CreatedAt        time.Time `json:"created_at"`
+	UserID             int       `json:"user_id"`
+	UserName           string    `json:"user_name"`
+	UserSurname        string    `json:"user_surname"`
+	UserEmail          string    `json:"user_email"`
+	UserPasswordHash   string    `json:"user_password_hash"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 type Event struct {
@@ -70,18 +70,13 @@ func validateToken(next http.HandlerFunc) http.HandlerFunc {
 		if err != nil {
 			sendJSONResponse(w, http.StatusUnauthorized, APIResponse{
 				Success: false,
-				Message: "Missing or invalid session token",
+				Message: "Unauthorized",
 			})
 			return
 		}
 
-		tokenString := cookie.Value
-
-		claims := &Claims{}
-		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-			return []byte(os.Getenv("JWT_SECRET")), nil
-		})
-
+		// Проверка токена
+		claims, err := parseToken(cookie.Value)
 		if err != nil {
 			sendJSONResponse(w, http.StatusUnauthorized, APIResponse{
 				Success: false,
@@ -90,19 +85,8 @@ func validateToken(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		if !token.Valid {
-			sendJSONResponse(w, http.StatusUnauthorized, APIResponse{
-				Success: false,
-				Message: "Expired token",
-			})
-			return
-		}
-
-		// Сохраняем UserID в контексте запроса
 		ctx := context.WithValue(r.Context(), userIDKey, claims.UserID)
 		r = r.WithContext(ctx)
-
-		// некст роутер аксесс роутеру
 		next.ServeHTTP(w, r)
 	})
 }
@@ -117,66 +101,64 @@ func getUserIDFromContext(r *http.Request) int {
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	var loginReq LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&loginReq); err != nil {
-		log.Printf("Error decoding login request: %v", err)
+		log.Println("Error decoding login request:", err)
 		sendJSONResponse(w, http.StatusBadRequest, APIResponse{
 			Success: false,
-			Message: "Неверный запрос",
+			Message: "Invalid request",
 		})
 		return
 	}
 
-	log.Println("Handling login request")
+	log.Println("Handling login request for email:", loginReq.Email)
 
 	var user User
 	err := db.QueryRow("SELECT user_id, user_name, user_surname, user_email, user_password_hash FROM users WHERE user_email = $1",
 		loginReq.Email).Scan(&user.UserID, &user.UserName, &user.UserSurname, &user.UserEmail, &user.UserPasswordHash)
 
-	if err == sql.ErrNoRows {
+	if err != nil {
 		sendJSONResponse(w, http.StatusUnauthorized, APIResponse{
 			Success: false,
-			Message: "Неверный email или пароль",
-		})
-		return
-	} else if err != nil {
-		sendJSONResponse(w, http.StatusInternalServerError, APIResponse{
-			Success: false,
-			Message: "Ошибка запроса к базе данных",
+			Message: "Invalid email or password",
 		})
 		return
 	}
 
+	// Проверка пароля
 	if !checkPasswordHash(loginReq.Password, user.UserPasswordHash) {
 		sendJSONResponse(w, http.StatusUnauthorized, APIResponse{
 			Success: false,
-			Message: "Неверный email или пароль",
+			Message: "Invalid email or password",
 		})
 		return
 	}
 
-	// Генерация токена и установка куки
+	// Генерация нового токена
 	token, err := generateJWT(user.UserID)
 	if err != nil {
 		sendJSONResponse(w, http.StatusInternalServerError, APIResponse{
 			Success: false,
-			Message: "Could not generate token",
+			Message: "Не удалось сгенерировать токен",
 		})
 		return
 	}
-	expiration := time.Now().Add(24 * time.Hour)
-	cookie := http.Cookie{
+
+	// Установка нового токена в куки
+	http.SetCookie(w, &http.Cookie{
 		Name:     "session_token",
 		Value:    token,
-		Expires:  expiration,
 		Path:     "/",
 		HttpOnly: true,
-	}
-	http.SetCookie(w, &cookie)
+		Secure:   true,
+	})
 
+	// Отправка успешного ответа с токеном
 	sendJSONResponse(w, http.StatusOK, APIResponse{
 		Success: true,
 		Message: "Login successful",
-		Data:    LoginResponse{Token: token, User: user},
+		Data:    map[string]interface{}{"token": token, "user": user},
 	})
+
+	log.Printf("User logged in successfully: %s", loginReq.Email)
 }
 
 // Функция для генерации JWT
@@ -184,24 +166,25 @@ func generateJWT(userID int) (string, error) {
 	claims := Claims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 72)),
-			Issuer:    "scientify",
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(72 * time.Hour)),
+				Issuer:    "scientify",
 		},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	secret := []byte(os.Getenv("JWT_SECRET"))
-	tokenString, err := token.SignedString(secret)
-	if err != nil {
-		return "", err
-	}
-	return tokenString, nil
+	return token.SignedString(secret)
 }
 
 // Функция для проверки хеша пароля
 func checkPasswordHash(password, hash string) bool {
+	log.Printf("Checking password: '%s' against hash: '%s'", password, hash)
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err == nil
+	if err != nil {
+		log.Printf("Password check error: %v", err)
+		return false
+	}
+	return true
 }
 
 func handleAPILogin(w http.ResponseWriter, r *http.Request) {
@@ -215,8 +198,8 @@ func handleAPILogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var user User
-	err := db.QueryRow("SELECT user_id, user_name, user_surname FROM users WHERE user_email = $1 AND user_password_hash = $2",
-		loginReq.Email, loginReq.Password).Scan(&user.UserID, &user.UserName, &user.UserSurname)
+	err := db.QueryRow("SELECT user_id, user_name, user_surname, user_password_hash FROM users WHERE user_email = $1",
+		loginReq.Email).Scan(&user.UserID, &user.UserName, &user.UserSurname, &user.UserPasswordHash)
 
 	if err == sql.ErrNoRows {
 		sendJSONResponse(w, http.StatusUnauthorized, APIResponse{
@@ -224,18 +207,40 @@ func handleAPILogin(w http.ResponseWriter, r *http.Request) {
 			Message: "Invalid email or password",
 		})
 		return
+	} else if err != nil {
+		sendJSONResponse(w, http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Message: "Database query error",
+		})
+		return
 	}
 
-	// куки
-	expiration := time.Now().Add(24 * time.Hour)
-	cookie := http.Cookie{
+	// Use checkPasswordHash to verify the password
+	if !checkPasswordHash(loginReq.Password, user.UserPasswordHash) {
+		sendJSONResponse(w, http.StatusUnauthorized, APIResponse{
+			Success: false,
+			Message: "Invalid email or password",
+		})
+		return
+	}
+	// Generate a new token
+	_, err = generateJWT(user.UserID)
+	if err != nil {
+		sendJSONResponse(w, http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Message: "Token generation failed",
+		})
+		return
+	}
+
+	// Set the new token in cookies
+	http.SetCookie(w, &http.Cookie{
 		Name:     "session_token",
-		Value:    fmt.Sprintf("%d", user.UserID), // In production, use proper session tokens
-		Expires:  expiration,
+		Value:    fmt.Sprintf("%d", user.UserID),
+		Expires:  time.Now().Add(24 * time.Hour),
 		Path:     "/",
 		HttpOnly: true,
-	}
-	http.SetCookie(w, &cookie)
+	})
 
 	// не отправлять хэшированй пароль
 	user.UserPasswordHash = ""
@@ -347,13 +352,6 @@ func create_event(w http.ResponseWriter, r *http.Request) {
 		location := r.FormValue("location")
 		description := r.FormValue("description")
 		Tags := r.FormValue("Tags")
-		db, err := sql.Open("postgres", "user=scientify_owner dbname=scientify sslmode=require password=PgtTJOfZ0Qr7 host=ep-polished-block-a9ifzvk9.gwc.azure.neon.tech")
-		if err != nil {
-			log.Printf("Database connection error: %v", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-		defer db.Close()
 
 		stmt, err := db.Prepare("INSERT INTO events (event_title, event_date, event_time, event_location, event_description, event_tags) VALUES ($1, $2, $3, $4, $5, $6)")
 		if err != nil {
@@ -447,21 +445,29 @@ func profile_page(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Хэширование пароля
+func hashPassword(password string) (string, error) {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hashedPassword), nil
+}
+
+// Проверка пароля
+
+// Обработчик регистрации пользователя
 func user_reg(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		var user User
 		if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
-			log.Printf("Error decoding user data: %v", err)
 			http.Error(w, "Invalid input", http.StatusBadRequest)
 			return
 		}
 
-		log.Printf("Received user data: %+v\n", user)
-
-		// Проверка существующего пользователя
+		// Проверяем, существует ли пользователь с таким email
 		existingUser, err := findUserByEmail(user.UserEmail)
 		if err != nil {
-			log.Printf("Error checking for existing user: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
@@ -473,20 +479,17 @@ func user_reg(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Хеширование пароля перед сохранением
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.UserPasswordHash), bcrypt.DefaultCost)
+		// Хэширование пароля
+		hashedPassword, err := hashPassword(user.UserPasswordHash)
 		if err != nil {
-			log.Printf("Error hashing password: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
-		user.UserPasswordHash = string(hashedPassword)
 
-		// Вставка нового пользователя в базу данных
+		// Сохранение хэшированного пароля
 		_, err = db.Exec("INSERT INTO users (user_name, user_surname, user_email, user_password_hash) VALUES ($1, $2, $3, $4)",
-			user.UserName, user.UserSurname, user.UserEmail, user.UserPasswordHash)
+			user.UserName, user.UserSurname, user.UserEmail, hashedPassword)
 		if err != nil {
-			log.Printf("Error inserting new user: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
@@ -501,6 +504,7 @@ func user_reg(w http.ResponseWriter, r *http.Request) {
 		return
 	} else {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
 	}
 }
 
@@ -576,6 +580,22 @@ func isValidUser(email, password string) bool {
 	return checkPasswordHash(password, user.UserPasswordHash)
 }
 
+func logoutHandler(w http.ResponseWriter, r *http.Request) {
+	// Удаление токена из куки
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session_token",
+		Value:    "",                             // Устанавливаем пустое значение для удаления
+		Expires:  time.Now().Add(-1 * time.Hour), // Устанавливаем время истечения в прошлом
+		HttpOnly: true,
+	})
+
+	// Можно также удалить другие куки, если необходимо
+	// http.SetCookie(w, &http.Cookie{Name: "other_cookie", Value: "", Expires: time.Now().Add(-1 * time.Hour)})
+
+	// Перенаправление на страницу входа или главную страницу
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
 func main() {
 	var err error
 	dbURL := getDatabaseURL()
@@ -607,6 +627,7 @@ func main() {
 	http.HandleFunc("/api/profile", validateToken(getProfile))
 	http.HandleFunc("/events", events)
 	http.HandleFunc("/create_event", create_event)
+	http.HandleFunc("/logout", logoutHandler)
 
 	// Запуск сервера
 	log.Printf("Starting server on port %s", port)
@@ -621,4 +642,26 @@ func getDatabaseURL() string {
 		dbURL = "postgres://scientify_owner:PgtTJOfZ0Qr7@ep-polished-block-a9ifzvk9.gwc.azure.neon.tech/scientify?sslmode=require"
 	}
 	return dbURL
+}
+
+// Функция для парсинга токена
+func parseToken(tokenString string) (*Claims, error) {
+	claims := &Claims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		// Проверка алгоритма
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(os.Getenv("G7$k9!mP2@xQ4#zR8^tW1&jL6*eF3$hN0")), nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if !token.Valid {
+		return nil, fmt.Errorf("invalid token")
+	}
+
+	return claims, nil
 }

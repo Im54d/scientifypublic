@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Log In - Scientify</title>
     <link rel="stylesheet" href="/static/style.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+    <link rel="stylesheet" href="/static/toastify.css">
 </head>
 <body>
 <header class="header">
@@ -21,7 +21,7 @@
 <section class="auth-section">
     <div class="auth-container">
         <h2>Log In</h2>
-        <form id="loginForm" class="auth-form">
+        <form id="loginForm" method="post" class="auth-form">
             <div class="form-group">
                 <label for="email">Email:</label>
                 <input type="email" id="email" name="email" required>
@@ -40,7 +40,7 @@
     </div>
 </section>
 
-<script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+<script src="/static/js/toastify-js.js"></script>
 <script src="/static/js/login.js" defer></script>
 </body>
 </html>

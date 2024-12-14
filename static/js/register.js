@@ -18,12 +18,12 @@ document.getElementById('registerForm').addEventListener('submit', function(even
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify(userData) 
+        body: JSON.stringify(userData)
     })
     .then(response => {
         if (response.ok) {
             // Если регистрация успешна, перенаправляем на страницу логина
-            window.location.href = '/login'; 
+            window.location.href = '/login';
         } else {
             return response.json().then(data => {
                 // Обработка ошибок, если регистрация не удалась
