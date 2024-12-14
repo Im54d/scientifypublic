@@ -7,9 +7,9 @@ document.getElementById('loginForm').addEventListener('submit', function(event) 
     document.querySelectorAll('.error-message').forEach(elem => elem.textContent = '');
 
     const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value.trim();
+    const password = document.getElementById('password').value;
 
-    console.log('Email:', email, 'Password:', password);
+    console.log('Attempting login with:', email); // Для отладки
 
     fetch('/api/login', {
         method: 'POST',
@@ -18,22 +18,19 @@ document.getElementById('loginForm').addEventListener('submit', function(event) 
         },
         body: JSON.stringify({ email, password })
     })
-    .then(response => {
-        if (response.ok) {
-            return response.json();
+    .then(response => response.json())
+    .then(data => {
+        console.log('Server response:', data); // Для отладки
+
+        if (data.success) {
+            
+            window.location.href = '/mainpage';
         } else {
-            return response.json().then(data => {
-                throw new Error(data.message || 'Ошибка входа');
-            });
+            throw new Error(data.message || 'Login failed');
         }
     })
-    .then(data => {
-        console.log('Login successful:', data);
-        document.cookie = `session_token=${data.token}; path=/; Secure; HttpOnly`;
-        window.location.href = '/mainpage';
-    })
     .catch(error => {
-        console.error('Ошибка:', error);
+        console.error('Login error:', error);
         alert(error.message);
     });
 });

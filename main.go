@@ -8,10 +8,12 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"os"	
+	"os"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -25,12 +27,12 @@ type APIResponse struct {
 }
 
 type User struct {
-	UserID             int       `json:"user_id"`
-	UserName           string    `json:"user_name"`
-	UserSurname        string    `json:"user_surname"`
-	UserEmail          string    `json:"user_email"`
-	UserPasswordHash   string    `json:"user_password_hash"`
-	CreatedAt          time.Time `json:"created_at"`
+	UserID           int       `json:"user_id"`
+	UserName         string    `json:"user_name"`
+	UserSurname      string    `json:"user_surname"`
+	UserEmail        string    `json:"user_email"`
+	UserPasswordHash string    `json:"user_password_hash"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 type Event struct {
@@ -63,39 +65,44 @@ type contextKey string
 
 const userIDKey contextKey = "userID"
 
+const JWT_SECRET_KEY = "G7$k9!mP2@xQ4#zR8^tW1&jL6*eF3$hN0"
+
 // Проверка токена
 func validateToken(next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie("session_token")
 		if err != nil {
-			sendJSONResponse(w, http.StatusUnauthorized, APIResponse{
-				Success: false,
-				Message: "Unauthorized",
-			})
+			log.Printf("Cookie not found: %v", err)
+			if strings.HasPrefix(r.URL.Path, "/api/") {
+				// Для API-запросов возвращаем JSON
+				sendJSONResponse(w, http.StatusUnauthorized, APIResponse{
+					Success: false,
+					Message: "Unauthorized",
+				})
+			} else {
+				// Для обычных запросов делаем редирект
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+			}
 			return
 		}
 
-		// Проверка токена
 		claims, err := parseToken(cookie.Value)
 		if err != nil {
-			sendJSONResponse(w, http.StatusUnauthorized, APIResponse{
-				Success: false,
-				Message: "Invalid token",
-			})
+			log.Printf("Invalid token: %v", err)
+			if strings.HasPrefix(r.URL.Path, "/api/") {
+				sendJSONResponse(w, http.StatusUnauthorized, APIResponse{
+					Success: false,
+					Message: "Invalid token",
+				})
+			} else {
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+			}
 			return
 		}
 
 		ctx := context.WithValue(r.Context(), userIDKey, claims.UserID)
-		r = r.WithContext(ctx)
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
-}
-
-func getUserIDFromContext(r *http.Request) int {
-	if userID, ok := r.Context().Value(userIDKey).(int); ok {
-		return userID
-	}
-	return 0
 }
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
@@ -116,6 +123,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		loginReq.Email).Scan(&user.UserID, &user.UserName, &user.UserSurname, &user.UserEmail, &user.UserPasswordHash)
 
 	if err != nil {
+		log.Printf("Database query error: %v", err)
 		sendJSONResponse(w, http.StatusUnauthorized, APIResponse{
 			Success: false,
 			Message: "Invalid email or password",
@@ -125,6 +133,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Проверка пароля
 	if !checkPasswordHash(loginReq.Password, user.UserPasswordHash) {
+		log.Printf("Password mismatch for user ID: %d", user.UserID)
 		sendJSONResponse(w, http.StatusUnauthorized, APIResponse{
 			Success: false,
 			Message: "Invalid email or password",
@@ -132,33 +141,37 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Генерация нового токена
+	// Генерация токена
 	token, err := generateJWT(user.UserID)
 	if err != nil {
+		log.Printf("Error generating token: %v", err)
 		sendJSONResponse(w, http.StatusInternalServerError, APIResponse{
 			Success: false,
-			Message: "Не удалось сгенерировать токен",
+			Message: "Token generation failed",
 		})
 		return
 	}
 
-	// Установка нового токена в куки
+	log.Printf("Setting cookie with token: %s", token)
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session_token",
 		Value:    token,
 		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
+		HttpOnly: false,  // для отладки
+		Secure:   false,  // для отладки
+		Expires:  time.Now().Add(24 * time.Hour),
+		SameSite: http.SameSiteLaxMode,
 	})
 
-	// Отправка успешного ответа с токеном
+	// Отправка успешного ответа
 	sendJSONResponse(w, http.StatusOK, APIResponse{
 		Success: true,
 		Message: "Login successful",
 		Data:    map[string]interface{}{"token": token, "user": user},
 	})
 
-	log.Printf("User logged in successfully: %s", loginReq.Email)
+	log.Printf("User ID %d logged in successfully", user.UserID)
 }
 
 // Функция для генерации JWT
@@ -166,14 +179,19 @@ func generateJWT(userID int) (string, error) {
 	claims := Claims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(time.Now().Add(72 * time.Hour)),
-				Issuer:    "scientify",
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(72 * time.Hour)),
+			Issuer:    "scientify",
 		},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	secret := []byte(os.Getenv("JWT_SECRET"))
-	return token.SignedString(secret)
+	signedToken, err := token.SignedString([]byte(JWT_SECRET_KEY))
+	if err != nil {
+		return "", err
+	}
+	
+	log.Printf("Generated token with secret key: %s", JWT_SECRET_KEY)
+	return signedToken, nil
 }
 
 // Функция для проверки хеша пароля
@@ -526,33 +544,6 @@ func userInfoHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func getUserByID(userID int) (User, error) {
-	var user User
-	err := db.QueryRow("SELECT user_id, user_name, user_surname, user_email FROM users WHERE user_id = $1", userID).Scan(&user.UserID, &user.UserName, &user.UserSurname, &user.UserEmail)
-	if err != nil {
-		return User{}, err
-	}
-	return user, nil
-}
-
-func getProfile(w http.ResponseWriter, r *http.Request) {
-	userID := getUserIDFromContext(r)
-
-	user, err := getUserByID(userID)
-	if err != nil {
-		sendJSONResponse(w, http.StatusInternalServerError, APIResponse{
-			Success: false,
-			Message: "Error fetching user data",
-		})
-		return
-	}
-
-	sendJSONResponse(w, http.StatusOK, APIResponse{
-		Success: true,
-		Data:    user,
-	})
-}
-
 func findUserByEmail(email string) (*User, error) {
 	var user User
 	err := db.QueryRow("SELECT user_id, user_name, user_surname, user_email FROM users WHERE user_email = $1", email).Scan(&user.UserID, &user.UserName, &user.UserSurname, &user.UserEmail)
@@ -597,6 +588,11 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// Загрузка переменных окружения из файла .env
+	if err := godotenv.Load(); err != nil {
+		log.Printf("Warning: .env file not found")
+	}
+
 	var err error
 	dbURL := getDatabaseURL()
 	db, err = sql.Open("postgres", dbURL)
@@ -624,7 +620,7 @@ func main() {
 	http.HandleFunc("/api/login", loginHandler)
 	http.HandleFunc("/api/apilogin", handleAPILogin)
 	http.HandleFunc("/profile", validateToken(profile_page))
-	http.HandleFunc("/api/profile", validateToken(getProfile))
+	http.HandleFunc("/api/profile", validateToken(profileHandler))
 	http.HandleFunc("/events", events)
 	http.HandleFunc("/create_event", create_event)
 	http.HandleFunc("/logout", logoutHandler)
@@ -647,15 +643,16 @@ func getDatabaseURL() string {
 // Функция для парсинга токена
 func parseToken(tokenString string) (*Claims, error) {
 	claims := &Claims{}
+	
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-		// Проверка алгоритма
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
-		return []byte(os.Getenv("G7$k9!mP2@xQ4#zR8^tW1&jL6*eF3$hN0")), nil
+		return []byte(JWT_SECRET_KEY), nil
 	})
 
 	if err != nil {
+		log.Printf("Token parsing error: %v", err)
 		return nil, err
 	}
 
@@ -664,4 +661,37 @@ func parseToken(tokenString string) (*Claims, error) {
 	}
 
 	return claims, nil
+}
+
+func profileHandler(w http.ResponseWriter, r *http.Request) {
+	// Получаем userID из контекста (установленного middleware)
+	userID, ok := r.Context().Value(userIDKey).(int)
+	if !ok {
+		log.Printf("User ID not found in context")
+		sendJSONResponse(w, http.StatusUnauthorized, APIResponse{
+			Success: false,
+			Message: "Unauthorized",
+		})
+		return
+	}
+
+	// Получаем данные пользователя из БД
+	var user User
+	err := db.QueryRow("SELECT user_id, user_name, user_surname, user_email FROM users WHERE user_id = $1",
+		userID).Scan(&user.UserID, &user.UserName, &user.UserSurname, &user.UserEmail)
+
+	if err != nil {
+		log.Printf("Database error: %v", err)
+		sendJSONResponse(w, http.StatusInternalServerError, APIResponse{
+			Success: false,
+			Message: "Failed to fetch user data",
+		})
+		return
+	}
+
+	// Отправляем данные пользователя
+	sendJSONResponse(w, http.StatusOK, APIResponse{
+		Success: true,
+		Data:    user,
+	})
 }
