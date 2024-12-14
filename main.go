@@ -258,8 +258,8 @@ func handleFormLogin(w http.ResponseWriter, r *http.Request) {
 		if err := tmpl.Execute(w, nil); err != nil {
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			log.Printf("Template execution error: %v", err)
+			return
 		}
-		return
 	}
 
 	// ПОСТ
@@ -419,6 +419,7 @@ func main_page(w http.ResponseWriter, r *http.Request) {
 	if err := tmpl.Execute(w, nil); err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		log.Printf("Template execution error: %v", err)
+		return
 	}
 }
 
