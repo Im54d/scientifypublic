@@ -364,17 +364,23 @@ func events(w http.ResponseWriter, r *http.Request) {
 
 func create_event(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
-		// Получаем данные из формы, используя точные имена полей из HTML
-		event_title := r.FormValue("event-title")      // изменено с "event_title"
-		Time := r.FormValue("event-time")             // изменено с "Time"
-		location := r.FormValue("event-location")      // изменено с "location"
-		description := r.FormValue("event-description") // изменено с "description"
+		// Получаем данные из формы
+		event_title := r.FormValue("event-title")
+		event_date := r.FormValue("event-date")
+		event_time := r.FormValue("event-time")
+		location := r.FormValue("event-location")
+		description := r.FormValue("event-description")
+		tags := r.FormValue("event-tags")
 		
 		// Добавим логирование для отладки
-		log.Printf("Received event data: title=%s, time=%s, location=%s, description=%s",
-			event_title, Time, location, description)
+		log.Printf("Received event data: title=%s, date=%s, time=%s, location=%s, description=%s, tags=%s",
+			event_title, event_date, event_time, location, description, tags)
 
-		stmt, err := db.Prepare("INSERT INTO events (event_title, event_date, event_time, event_location, event_description, event_tags) VALUES ($1, $2, $3, $4, $5, $6)")
+		// Подготовка SQL запроса
+		stmt, err := db.Prepare(`
+			INSERT INTO events (event_title, event_date, event_time, event_location, event_description, event_tags) 
+			VALUES ($1, $2, $3, $4, $5, $6)
+		`)
 		if err != nil {
 			log.Printf("Query preparation error: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -382,24 +388,31 @@ func create_event(w http.ResponseWriter, r *http.Request) {
 		}
 		defer stmt.Close()
 
-		_, err = stmt.Exec(event_title, Time, Time, location, description, "")
+		// Выполнение запроса
+		_, err = stmt.Exec(event_title, event_date, event_time, location, description, tags)
 		if err != nil {
 			log.Printf("Query execution error: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
-		http.Redirect(w, r, "/mainpage", http.StatusSeeOther)
+
+		// Перенаправление после успешного создания
+		http.Redirect(w, r, "/events", http.StatusSeeOther)
 		return
-	} else {
-		tmpl, err := template.ParseFiles("templates/create_events.html")
-		if err != nil {
-			http.Error(w, "Couldn't parse file", http.StatusInternalServerError)
-			return
-		}
-		err = tmpl.Execute(w, nil)
-		if err != nil {
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-		}
+	}
+
+	// Отображение формы создания события
+	tmpl, err := template.ParseFiles("templates/create_events.html")
+	if err != nil {
+		log.Printf("Template parsing error: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := tmpl.Execute(w, nil); err != nil {
+		log.Printf("Template execution error: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
 }
 
