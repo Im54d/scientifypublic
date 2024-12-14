@@ -20,24 +20,14 @@
 <main>
     <section class="create-event">
         <form action="/create_event" method="post" class="event-form">
-            <label for="event-title">Event Title</label>
-            <input type="text" id="event_title" name="event_title" placeholder="Enter event title" required>
-
-            <label for="event-date">Date</label>
-            <input type="date" id="Date" name="Date" required>
-
+            <label for="event-title">Title</label>
+            <input type="text" id="event-title" name="title" required>
             <label for="event-time">Time</label>
-            <input type="time" id="Time" name="Time" required>
-
+            <input type="time" id="event-time" name="time" required>
             <label for="event-location">Location</label>
-            <input type="text" id="location" name="location" placeholder="Enter location" required>
-
+            <input type="text" id="event-location" name="location" required>
             <label for="event-description">Description</label>
-            <textarea id="description" name="description" rows="5" placeholder="Enter a brief description of the event" required></textarea>
-
-            <label for="event-tags">Tags (e.g., AI, Robotics, etc.)</label>
-            <input type="text" id="Tags" name="Tags" placeholder="Enter tags separated by commas">
-
+            <textarea id="event-description" name="description" required></textarea>
             <button type="submit">Create Event</button>
         </form>
     </section>

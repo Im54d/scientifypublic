@@ -21,7 +21,7 @@
 <section class="auth-section">
     <div class="auth-container">
         <h2>Log In</h2>
-        <form id="loginForm" class="auth-form">
+        <form id="loginForm" class="auth-form" method="post">
             <div class="form-group">
                 <label for="email">Email:</label>
                 <input type="email" id="email" name="email" required>
@@ -34,13 +34,13 @@
                 <span class="error-message" id="passwordError"></span>
             </div>
 
-            <button type="submit" class="submit-btn">Log In</button>
+            <button type="submit">Log In</button>
             <p>Don't have an account? <a href="/register">Sign Up</a></p>
         </form>
     </div>
 </section>
 
 <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
-<script src="/static/js/login.js"></script>
+<script src="/static/js/login.js" defer></script>
 </body>
 </html>

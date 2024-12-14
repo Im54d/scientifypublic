@@ -11,7 +11,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt/v4"
 	_ "github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -117,6 +117,7 @@ func getUserIDFromContext(r *http.Request) int {
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	var loginReq LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&loginReq); err != nil {
+		log.Printf("Error decoding login request: %v", err)
 		sendJSONResponse(w, http.StatusBadRequest, APIResponse{
 			Success: false,
 			Message: "Неверный запрос",
@@ -456,56 +457,50 @@ func profile_page(w http.ResponseWriter, r *http.Request) {
 }
 
 func user_reg(w http.ResponseWriter, r *http.Request) {
-	user_name := r.FormValue("name")
-	user_surname := r.FormValue("surname")
-	user_email := r.FormValue("email")
-	user_password_hash := r.FormValue("password")
+	if r.Method == http.MethodPost {
+		var user User
+		err := json.NewDecoder(r.Body).Decode(&user)
+		if err != nil {
+			http.Error(w, "Invalid input", http.StatusBadRequest)
+			return
+		}
 
-	db, err := sql.Open("postgres", "user=scientify_owner dbname=scientify password=PgtTJOfZ0Qr7 host=ep-polished-block-a9ifzvk9.gwc.azure.neon.tech sslmode=require")
-	if err != nil {
-		log.Printf("Database connection error: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	if err = db.Ping(); err != nil {
-		log.Fatalf("Error connecting to database: %v", err)
-	}
-	defer db.Close()
+		// Проверка существования пользователя по email
+		existingUser, err := findUserByEmail(user.UserEmail)
+		if err != nil {
+			http.Error(w, "Error checking user", http.StatusInternalServerError)
+			return
+		}
+		if existingUser != nil {
+			http.Error(w, "Email already in use", http.StatusConflict)
+			return
+		}
 
-	stmt, err := db.Prepare("INSERT INTO users (user_name, user_surname, user_email, user_password_hash) VALUES ($1, $2, $3, $4)")
-	if err != nil {
-		log.Printf("Query preparation error: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	defer stmt.Close()
+		// Хеширование пароля
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.UserPasswordHash), bcrypt.DefaultCost)
+		if err != nil {
+			http.Error(w, "Error hashing password", http.StatusInternalServerError)
+			return
+		}
+		user.UserPasswordHash = string(hashedPassword)
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user_password_hash), bcrypt.DefaultCost)
-	if err != nil {
-		log.Printf("Error hashing password: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
+		// Установка времени создания
+		user.CreatedAt = time.Now()
 
-	_, err = stmt.Exec(user_name, user_surname, user_email, hashedPassword)
-	if err != nil {
-		log.Printf("Query execution error: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	var existingEmail string
-	err = db.QueryRow("SELECT user_email FROM users WHERE user_email = $1", user_email).Scan(&existingEmail)
-	if err != nil && err != sql.ErrNoRows {
-		log.Printf("Error checking email: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	if existingEmail != "" {
-		http.Error(w, "Email already in use", http.StatusConflict)
-		return
-	}
+		// Вставка нового пользователя в базу данных
+		_, err = db.Exec("INSERT INTO users (user_name, user_surname, user_email, user_password_hash, created_at) VALUES ($1, $2, $3, $4, $5)",
+			user.UserName, user.UserSurname, user.UserEmail, user.UserPasswordHash, user.CreatedAt)
+		if err != nil {
+			http.Error(w, "Error creating user", http.StatusInternalServerError)
+			return
+		}
 
-	http.Redirect(w, r, "/mainpage", http.StatusSeeOther)
+		// Успешная регистрация
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(user)
+	} else {
+		// Об
+	}
 }
 
 func userInfoHandler(w http.ResponseWriter, r *http.Request) {
@@ -551,6 +546,18 @@ func getProfile(w http.ResponseWriter, r *http.Request) {
 		Success: true,
 		Data:    user,
 	})
+}
+
+func findUserByEmail(email string) (*User, error) {
+	var user User
+	err := db.QueryRow("SELECT user_id, user_name, user_surname, user_email FROM users WHERE user_email = $1", email).Scan(&user.UserID, &user.UserName, &user.UserSurname, &user.UserEmail)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // Пользователь не найден
+		}
+		return nil, err // Ошибка выполнения запроса
+	}
+	return &user, nil // Пользователь найден
 }
 
 func main() {

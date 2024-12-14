@@ -1,59 +1,42 @@
-document.getElementById('loginForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
+// Обработчик формы входа
+// Сохранение токена в куки и последующая работа с ним
 
-    // сообщение ошибки
+document.getElementById('loginForm').addEventListener('submit', function(event) {
+    event.preventDefault();
+
+    // Очистка сообщений об ошибках
     document.querySelectorAll('.error-message').forEach(elem => elem.textContent = '');
 
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
 
-    try {
-        const response = await fetch('/api/login', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ email, password }),
-        });
+    console.log('Email:', email, 'Password:', password);
 
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.message || 'Login failed');
+    // Отправка данных на сервер для аутентификации
+    fetch('/api/login', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email, password })
+    })
+    .then(response => {
+        if (response.ok) {
+            return response.json();
+        } else {
+            throw new Error('Ошибка входа');
         }
-
-        if (data.success) {
-            // Хранение токена и данных юзера
-            localStorage.setItem('token', data.data.token);
-            localStorage.setItem('user', JSON.stringify(data.data.user));
-
-            // подтверждение входа
-            Toastify({
-                text: "Login successful!",
-                duration: 3000,
-                gravity: "top",
-                position: "right",
-                backgroundColor: "#4CAF50",
-            }).showToast();
-
-            // на мэйнпэйдж после задержки 
-            setTimeout(() => {
-                window.location.href = '/mainpage';
-            }, 1000);
-        }
-    } catch (error) {
-        // еррор
-        Toastify({
-            text: error.message || "An error occurred during login",
-            duration: 3000,
-            gravity: "top",
-            position: "right",
-            backgroundColor: "#F44336",
-        }).showToast();
-    }
+    })
+    .then(data => {
+        // Сохранение токена в cookie
+        document.cookie = `token=${data.token}; path=/; Secure;`;
+        console.log('Успешный вход');
+        window.location.href = '/mainpage'; // Перенаправление на главную страницу
+    })
+    .catch(error => console.error('Ошибка:', error));
 });
 
-// 
+// Валидация email
 document.getElementById('email').addEventListener('input', (e) => {
     const email = e.target.value;
     const emailError = document.getElementById('emailError');
@@ -66,6 +49,7 @@ document.getElementById('email').addEventListener('input', (e) => {
     }
 });
 
+// Валидация пароля
 document.getElementById('password').addEventListener('input', (e) => {
     const password = e.target.value;
     const passwordError = document.getElementById('passwordError');
@@ -77,36 +61,55 @@ document.getElementById('password').addEventListener('input', (e) => {
     }
 });
 
-document.addEventListener('DOMContentLoaded', async () => {
-    const token = localStorage.getItem('token');
+// Получение токена из cookies
+function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+}
+
+// Проверка токена и загрузка профиля
+document.addEventListener('DOMContentLoaded', () => {
+    const token = getCookie('token');
 
     if (!token) {
-        //если нет токена на логин пейдж
-        window.location.href = '/login';
+        // Если нет токена, остаемся на странице логина
+        if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+        }
         return;
     }
 
-    try {
-        const response = await fetch('/api/profile', {
-            method: 'GET',
-            headers: {
-                'Authorization': 'Bearer ' + token
-            }
-        });
+    // Проверка текущего пути и вызов функции fetchProfileData
+    if (window.location.pathname === '/mainpage') {
+        fetchProfileData(); // Получение профиля только на странице mainpage
+    }
+});
 
-        if (!response.ok) {
-            throw new Error('Failed to fetch profile data');
+function fetchProfileData() {
+    fetch('/api/profile', {
+        method: 'GET',
+        headers: {
+            'Authorization': 'Bearer ' + getCookie('token')
         }
-
-        const data = await response.json();
-        // Обновите страницу профиля с полученными данными
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Обновление элементов на странице mainpage
         document.getElementById('userID').textContent = data.userID;
         document.getElementById('userName').textContent = data.userName;
         document.getElementById('userSurname').textContent = data.userSurname;
         document.getElementById('userEmail').textContent = data.userEmail;
-    } catch (error) {
+    })
+    .catch(error => {
         console.error('Error fetching profile:', error);
-        // Обработка ошибок, например, перенаправление на страницу входа
-        window.location.href = '/login';
-    }
-}); 
+        window.location.href = '/login'; // Перенаправление на логин при ошибке
+    });
+}
+
+// Функция для получения токена из cookies
+function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+}
