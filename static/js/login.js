@@ -22,18 +22,22 @@ document.getElementById('loginForm').addEventListener('submit', function(event) 
     })
     .then(response => {
         if (response.ok) {
-            return response.json();
+            // Если логин успешен, перенаправляем на главную страницу
+            window.location.href = '/mainpage';
         } else {
-            throw new Error('Ошибка входа');
+            return response.json().then(data => {
+                // Обработка ошибок, если логин не удался
+                throw new Error(data.message || 'Ошибка входа');
+            });
         }
     })
     .then(data => {
-        // Сохранение токена в cookie
-        document.cookie = `token=${data.token}; path=/; Secure;`;
-        console.log('Успешный вход');
-        window.location.href = '/mainpage'; // Перенаправление на главную страницу
+        console.log('Login successful:', data);
     })
-    .catch(error => console.error('Ошибка:', error));
+    .catch(error => {
+        console.error('Ошибка:', error);
+        // Здесь можно отобразить сообщение об ошибке на странице
+    });
 });
 
 // Валидация email
@@ -68,9 +72,10 @@ function getCookie(name) {
     if (parts.length === 2) return parts.pop().split(';').shift();
 }
 
-// Проверка токена и загрузка профиля
+// Проверка токена при загрузке страницы
 document.addEventListener('DOMContentLoaded', () => {
-    const token = getCookie('token');
+    const token = getCookie('session_token'); // Убедитесь, что имя куки совпадает
+    console.log('Token from cookie:', token); // Логирование токена
 
     if (!token) {
         // Если нет токена, остаемся на странице логина

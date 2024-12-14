@@ -56,7 +56,7 @@ type LoginResponse struct {
 // Структура для хранения данных токена
 type Claims struct {
 	UserID int `json:"user_id"`
-	jwt.StandardClaims
+	jwt.RegisteredClaims
 }
 
 type contextKey string
@@ -125,11 +125,10 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Received login request: %+v\n", loginReq)
+	log.Println("Handling login request")
 
 	var user User
-	var err error
-	err = db.QueryRow("SELECT user_id, user_name, user_surname, user_email, user_password_hash FROM users WHERE user_email = $1",
+	err := db.QueryRow("SELECT user_id, user_name, user_surname, user_email, user_password_hash FROM users WHERE user_email = $1",
 		loginReq.Email).Scan(&user.UserID, &user.UserName, &user.UserSurname, &user.UserEmail, &user.UserPasswordHash)
 
 	if err == sql.ErrNoRows {
@@ -154,7 +153,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Генерация токена
+	// Генерация токена и установка куки
 	token, err := generateJWT(user.UserID)
 	if err != nil {
 		sendJSONResponse(w, http.StatusInternalServerError, APIResponse{
@@ -163,7 +162,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	expiration := time.Now().Add(24 * time.Hour) // 24 часика доступны куки
+	expiration := time.Now().Add(24 * time.Hour)
 	cookie := http.Cookie{
 		Name:     "session_token",
 		Value:    token,
@@ -184,14 +183,14 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 func generateJWT(userID int) (string, error) {
 	claims := Claims{
 		UserID: userID,
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: time.Now().Add(time.Hour * 72).Unix(), // Токен будет действителен 72 часа
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 72)),
 			Issuer:    "scientify",
 		},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	secret := []byte(os.Getenv("JWT_SECRET")) // Секретный ключ для подписи токена
+	secret := []byte(os.Getenv("JWT_SECRET"))
 	tokenString, err := token.SignedString(secret)
 	if err != nil {
 		return "", err
@@ -260,33 +259,24 @@ func handleFormLogin(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Template execution error: %v", err)
 			return
 		}
-	}
+	} else if r.Method == "POST" {
+		email := r.FormValue("email")
+		password := r.FormValue("password")
 
-	// ПОСТ
-	email := r.FormValue("email")
-	password := r.FormValue("password")
+		// Логика проверки учетных данных
+		// Например, вызов функции для проверки логина
+		if !isValidUser(email, password) { // Предположим, что есть такая функция
+			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+			return
+		}
 
-	var user User
-	err := db.QueryRow("SELECT user_id, user_name, user_surname FROM users WHERE user_email = $1 AND user_password_hash = $2",
-		email, password).Scan(&user.UserID, &user.UserName, &user.UserSurname)
-
-	if err != nil {
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		// Если логин успешен
+		http.Redirect(w, r, "/mainpage", http.StatusSeeOther)
+		return
+	} else {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
-	// куки
-	expiration := time.Now().Add(24 * time.Hour)
-	cookie := http.Cookie{
-		Name:     "session_token",
-		Value:    fmt.Sprintf("%d", user.UserID),
-		Expires:  expiration,
-		Path:     "/",
-		HttpOnly: true,
-	}
-	http.SetCookie(w, &cookie)
-
-	http.Redirect(w, r, "/mainpage", http.StatusSeeOther)
 }
 
 func sendJSONResponse(w http.ResponseWriter, status int, response APIResponse) {
@@ -460,47 +450,57 @@ func profile_page(w http.ResponseWriter, r *http.Request) {
 func user_reg(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		var user User
-		err := json.NewDecoder(r.Body).Decode(&user)
-		if err != nil {
+		if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+			log.Printf("Error decoding user data: %v", err)
 			http.Error(w, "Invalid input", http.StatusBadRequest)
 			return
 		}
 
-		// Проверка существования пользователя по email
+		log.Printf("Received user data: %+v\n", user)
+
+		// Проверка существующего пользователя
 		existingUser, err := findUserByEmail(user.UserEmail)
 		if err != nil {
-			http.Error(w, "Error checking user", http.StatusInternalServerError)
+			log.Printf("Error checking for existing user: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 		if existingUser != nil {
-			http.Error(w, "Email already in use", http.StatusConflict)
+			sendJSONResponse(w, http.StatusConflict, APIResponse{
+				Success: false,
+				Message: "Пользователь с таким email уже существует",
+			})
 			return
 		}
 
-		// Хеширование пароля
+		// Хеширование пароля перед сохранением
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.UserPasswordHash), bcrypt.DefaultCost)
 		if err != nil {
-			http.Error(w, "Error hashing password", http.StatusInternalServerError)
+			log.Printf("Error hashing password: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 		user.UserPasswordHash = string(hashedPassword)
 
-		// Установка времени создания
-		user.CreatedAt = time.Now()
-
 		// Вставка нового пользователя в базу данных
-		_, err = db.Exec("INSERT INTO users (user_name, user_surname, user_email, user_password_hash, created_at) VALUES ($1, $2, $3, $4, $5)",
-			user.UserName, user.UserSurname, user.UserEmail, user.UserPasswordHash, user.CreatedAt)
+		_, err = db.Exec("INSERT INTO users (user_name, user_surname, user_email, user_password_hash) VALUES ($1, $2, $3, $4)",
+			user.UserName, user.UserSurname, user.UserEmail, user.UserPasswordHash)
 		if err != nil {
-			http.Error(w, "Error creating user", http.StatusInternalServerError)
+			log.Printf("Error inserting new user: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
-		// Успешная регистрация
-		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(user)
+		sendJSONResponse(w, http.StatusCreated, APIResponse{
+			Success: true,
+			Message: "Пользователь успешно зарегистрирован",
+		})
+
+		// Перенаправление на страницу логина после успешной регистрации
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
 	} else {
-		// Об
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 	}
 }
 
@@ -559,6 +559,21 @@ func findUserByEmail(email string) (*User, error) {
 		return nil, err // Ошибка выполнения запроса
 	}
 	return &user, nil // Пользователь найден
+}
+
+func isValidUser(email, password string) bool {
+	var user User
+	err := db.QueryRow("SELECT user_id, user_name, user_surname, user_email, user_password_hash FROM users WHERE user_email = $1", email).Scan(&user.UserID, &user.UserName, &user.UserSurname, &user.UserEmail, &user.UserPasswordHash)
+
+	if err == sql.ErrNoRows {
+		return false // Пользователь не найден
+	} else if err != nil {
+		log.Printf("Error querying user: %v", err)
+		return false // Ошибка выполнения запроса
+	}
+
+	// Проверка пароля
+	return checkPasswordHash(password, user.UserPasswordHash)
 }
 
 func main() {
