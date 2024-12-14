@@ -364,12 +364,15 @@ func events(w http.ResponseWriter, r *http.Request) {
 
 func create_event(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
-		event_title := r.FormValue("event_title")
-		Date := r.FormValue("Date")
-		Time := r.FormValue("Time")
-		location := r.FormValue("location")
-		description := r.FormValue("description")
-		Tags := r.FormValue("Tags")
+		// Получаем данные из формы, используя точные имена полей из HTML
+		event_title := r.FormValue("event-title")      // изменено с "event_title"
+		Time := r.FormValue("event-time")             // изменено с "Time"
+		location := r.FormValue("event-location")      // изменено с "location"
+		description := r.FormValue("event-description") // изменено с "description"
+		
+		// Добавим логирование для отладки
+		log.Printf("Received event data: title=%s, time=%s, location=%s, description=%s",
+			event_title, Time, location, description)
 
 		stmt, err := db.Prepare("INSERT INTO events (event_title, event_date, event_time, event_location, event_description, event_tags) VALUES ($1, $2, $3, $4, $5, $6)")
 		if err != nil {
@@ -379,7 +382,7 @@ func create_event(w http.ResponseWriter, r *http.Request) {
 		}
 		defer stmt.Close()
 
-		_, err = stmt.Exec(event_title, Date, Time, location, description, Tags)
+		_, err = stmt.Exec(event_title, Time, Time, location, description, "")
 		if err != nil {
 			log.Printf("Query execution error: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
